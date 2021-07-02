@@ -20,32 +20,18 @@ namespace Azure.AI.MetricsAdvisor.Tests
         [RecordedTest]
         [TestCase(true)]
         [TestCase(false)]
-        public async Task GetAnomalies(bool populateOptionalMembers)
+        public async Task GetAnomaliesWithMinimumSetup(bool useTokenCredential)
         {
-            MetricsAdvisorClient client = GetMetricsAdvisorClient();
+            MetricsAdvisorClient client = GetMetricsAdvisorClient(useTokenCredential);
 
             var options = new GetAnomaliesForDetectionConfigurationOptions(SamplingStartTime, SamplingEndTime);
-
-            if (populateOptionalMembers)
-            {
-                options.Filter = new GetAnomaliesForDetectionConfigurationFilter(AnomalySeverity.Medium, AnomalySeverity.Medium);
-
-                var groupKey1 = new DimensionKey();
-                groupKey1.AddDimensionColumn("city", "Delhi");
-                groupKey1.AddDimensionColumn("category", "Handmade");
-
-                var groupKey2 = new DimensionKey();
-                groupKey2.AddDimensionColumn("city", "Kolkata");
-
-                options.Filter.SeriesGroupKeys.Add(groupKey1);
-                options.Filter.SeriesGroupKeys.Add(groupKey2);
-            }
 
             var anomalyCount = 0;
 
             await foreach (DataPointAnomaly anomaly in client.GetAnomaliesAsync(DetectionConfigurationId, options))
             {
                 Assert.That(anomaly, Is.Not.Null);
+                Assert.That(anomaly.DataFeedId, Is.Null);
                 Assert.That(anomaly.MetricId, Is.Null);
                 Assert.That(anomaly.AnomalyDetectionConfigurationId, Is.Null);
                 Assert.That(anomaly.CreatedTime, Is.Null);
@@ -55,19 +41,60 @@ namespace Azure.AI.MetricsAdvisor.Tests
                 Assert.That(anomaly.Timestamp, Is.InRange(SamplingStartTime, SamplingEndTime));
                 Assert.That(anomaly.Severity, Is.Not.EqualTo(default(AnomalySeverity)));
 
-                ValidateDimensionKey(anomaly.SeriesKey);
+                ValidateSeriesKey(anomaly.SeriesKey);
 
-                if (populateOptionalMembers)
+                if (++anomalyCount >= MaximumSamplesCount)
                 {
-                    Assert.That(anomaly.Severity, Is.EqualTo(AnomalySeverity.Medium));
-
-                    Dictionary<string, string> dimensionColumns = anomaly.SeriesKey.AsDictionary();
-
-                    string city = dimensionColumns["city"];
-                    string category = dimensionColumns["category"];
-
-                    Assert.That((city == "Delhi" && category == "Handmade") || city == "Kolkata");
+                    break;
                 }
+            }
+
+            Assert.That(anomalyCount, Is.GreaterThan(0));
+        }
+
+        [RecordedTest]
+        public async Task GetAnomaliesWithOptionalFilter()
+        {
+            MetricsAdvisorClient client = GetMetricsAdvisorClient();
+
+            var options = new GetAnomaliesForDetectionConfigurationOptions(SamplingStartTime, SamplingEndTime)
+            {
+                Filter = new GetAnomaliesForDetectionConfigurationFilter(AnomalySeverity.Medium, AnomalySeverity.Medium)
+            };
+
+            var groupKey1 = new DimensionKey();
+            groupKey1.AddDimensionColumn("city", "Delhi");
+            groupKey1.AddDimensionColumn("category", "Handmade");
+
+            var groupKey2 = new DimensionKey();
+            groupKey2.AddDimensionColumn("city", "Kolkata");
+
+            options.Filter.SeriesGroupKeys.Add(groupKey1);
+            options.Filter.SeriesGroupKeys.Add(groupKey2);
+
+            var anomalyCount = 0;
+
+            await foreach (DataPointAnomaly anomaly in client.GetAnomaliesAsync(DetectionConfigurationId, options))
+            {
+                Assert.That(anomaly, Is.Not.Null);
+                Assert.That(anomaly.DataFeedId, Is.Null);
+                Assert.That(anomaly.MetricId, Is.Null);
+                Assert.That(anomaly.AnomalyDetectionConfigurationId, Is.Null);
+                Assert.That(anomaly.CreatedTime, Is.Null);
+                Assert.That(anomaly.ModifiedTime, Is.Null);
+                Assert.That(anomaly.Status, Is.Null);
+
+                Assert.That(anomaly.Timestamp, Is.InRange(SamplingStartTime, SamplingEndTime));
+                Assert.That(anomaly.Severity, Is.EqualTo(AnomalySeverity.Medium));
+
+                ValidateSeriesKey(anomaly.SeriesKey);
+
+                Dictionary<string, string> dimensionColumns = anomaly.SeriesKey.AsDictionary();
+
+                string city = dimensionColumns["city"];
+                string category = dimensionColumns["category"];
+
+                Assert.That((city == "Delhi" && category == "Handmade") || city == "Kolkata");
 
                 if (++anomalyCount >= MaximumSamplesCount)
                 {
@@ -81,30 +108,18 @@ namespace Azure.AI.MetricsAdvisor.Tests
         [RecordedTest]
         [TestCase(true)]
         [TestCase(false)]
-        public async Task GetIncidents(bool populateOptionalMembers)
+        public async Task GetIncidentsWithMinimumSetup(bool useTokenCredential)
         {
-            MetricsAdvisorClient client = GetMetricsAdvisorClient();
+            MetricsAdvisorClient client = GetMetricsAdvisorClient(useTokenCredential);
 
             var options = new GetIncidentsForDetectionConfigurationOptions(SamplingStartTime, SamplingEndTime);
-
-            if (populateOptionalMembers)
-            {
-                var groupKey1 = new DimensionKey();
-                groupKey1.AddDimensionColumn("city", "Delhi");
-                groupKey1.AddDimensionColumn("category", "Handmade");
-
-                var groupKey2 = new DimensionKey();
-                groupKey2.AddDimensionColumn("city", "Kolkata");
-
-                options.DimensionsToFilter.Add(groupKey1);
-                options.DimensionsToFilter.Add(groupKey2);
-            }
 
             var incidentCount = 0;
 
             await foreach (AnomalyIncident incident in client.GetIncidentsAsync(DetectionConfigurationId, options))
             {
                 Assert.That(incident, Is.Not.Null);
+                Assert.That(incident.DataFeedId, Is.Null);
                 Assert.That(incident.MetricId, Is.Null);
 
                 Assert.That(incident.Id, Is.Not.Null.And.Not.Empty);
@@ -114,17 +129,7 @@ namespace Azure.AI.MetricsAdvisor.Tests
                 Assert.That(incident.Status, Is.Not.EqualTo(default(AnomalyIncidentStatus)));
                 Assert.That(incident.Severity, Is.Not.EqualTo(default(AnomalySeverity)));
 
-                ValidateDimensionKey(incident.DimensionKey);
-
-                if (populateOptionalMembers)
-                {
-                    Dictionary<string, string> dimensionColumns = incident.DimensionKey.AsDictionary();
-
-                    string city = dimensionColumns["city"];
-                    string category = dimensionColumns["category"];
-
-                    Assert.That((city == "Delhi" && category == "Handmade") || city == "Kolkata");
-                }
+                ValidateSeriesKey(incident.RootDimensionKey);
 
                 if (++incidentCount >= MaximumSamplesCount)
                 {
@@ -136,9 +141,61 @@ namespace Azure.AI.MetricsAdvisor.Tests
         }
 
         [RecordedTest]
-        public async Task GetIncidentRootCauses()
+        public async Task GetIncidentsWithOptionalDimensionFilter()
         {
             MetricsAdvisorClient client = GetMetricsAdvisorClient();
+
+            var options = new GetIncidentsForDetectionConfigurationOptions(SamplingStartTime, SamplingEndTime);
+
+            var groupKey1 = new DimensionKey();
+            groupKey1.AddDimensionColumn("city", "Delhi");
+            groupKey1.AddDimensionColumn("category", "Handmade");
+
+            var groupKey2 = new DimensionKey();
+            groupKey2.AddDimensionColumn("city", "Kolkata");
+
+            options.DimensionsToFilter.Add(groupKey1);
+            options.DimensionsToFilter.Add(groupKey2);
+
+            var incidentCount = 0;
+
+            await foreach (AnomalyIncident incident in client.GetIncidentsAsync(DetectionConfigurationId, options))
+            {
+                Assert.That(incident, Is.Not.Null);
+                Assert.That(incident.DataFeedId, Is.Null);
+                Assert.That(incident.MetricId, Is.Null);
+
+                Assert.That(incident.Id, Is.Not.Null.And.Not.Empty);
+                Assert.That(incident.DetectionConfigurationId, Is.EqualTo(DetectionConfigurationId));
+                Assert.That(incident.StartTime, Is.GreaterThanOrEqualTo(SamplingStartTime));
+                Assert.That(incident.LastTime, Is.LessThanOrEqualTo(SamplingEndTime));
+                Assert.That(incident.Status, Is.Not.EqualTo(default(AnomalyIncidentStatus)));
+                Assert.That(incident.Severity, Is.Not.EqualTo(default(AnomalySeverity)));
+
+                ValidateSeriesKey(incident.RootDimensionKey);
+
+                Dictionary<string, string> dimensionColumns = incident.RootDimensionKey.AsDictionary();
+
+                string city = dimensionColumns["city"];
+                string category = dimensionColumns["category"];
+
+                Assert.That((city == "Delhi" && category == "Handmade") || city == "Kolkata");
+
+                if (++incidentCount >= MaximumSamplesCount)
+                {
+                    break;
+                }
+            }
+
+            Assert.That(incidentCount, Is.GreaterThan(0));
+        }
+
+        [RecordedTest]
+        [TestCase(true)]
+        [TestCase(false)]
+        public async Task GetIncidentRootCauses(bool useTokenCredential)
+        {
+            MetricsAdvisorClient client = GetMetricsAdvisorClient(useTokenCredential);
 
             var rootCauseCount = 0;
 
@@ -233,26 +290,51 @@ namespace Azure.AI.MetricsAdvisor.Tests
             Assert.That(rootCauseCount, Is.GreaterThan(0));
         }
 
+        /// <param name="populateOptionalMembers">
+        /// When <c>true</c>, all optional properties are populated to make sure values are being passed and returned
+        /// correctly. When <c>false</c>, the test makes sure it's still possible to make a request with the minimum
+        /// configuration and that the responses with <c>null</c> and <c>default</c> values can be parsed by the client.
+        /// </param>
         [RecordedTest]
         [TestCase(true)]
         [TestCase(false)]
-        public async Task GetValuesOfDimensionWithAnomalies(bool populateOptionalMembers)
+        public async Task GetAnomalyDimensionValuesWithMinimumSetup(bool useTokenCredential)
+        {
+            const string dimensionName = "city";
+
+            MetricsAdvisorClient client = GetMetricsAdvisorClient(useTokenCredential);
+
+            var options = new GetAnomalyDimensionValuesOptions(SamplingStartTime, SamplingEndTime);
+
+            var valueCount = 0;
+
+            await foreach (string value in client.GetAnomalyDimensionValuesAsync(DetectionConfigurationId, dimensionName, options))
+            {
+                Assert.That(value, Is.Not.Null.And.Not.Empty);
+
+                if (++valueCount >= MaximumSamplesCount)
+                {
+                    break;
+                }
+            }
+
+            Assert.That(valueCount, Is.GreaterThan(0));
+        }
+
+        [RecordedTest]
+        public async Task GetAnomalyDimensionValuesWithOptionalDimensionFilter()
         {
             const string dimensionName = "city";
 
             MetricsAdvisorClient client = GetMetricsAdvisorClient();
 
-            var options = new GetValuesOfDimensionWithAnomaliesOptions(SamplingStartTime, SamplingEndTime);
+            var options = new GetAnomalyDimensionValuesOptions(SamplingStartTime, SamplingEndTime);
 
-            if (populateOptionalMembers)
-            {
-                options.DimensionToFilter = new DimensionKey();
-                options.DimensionToFilter.AddDimensionColumn("category", "Handmade");
-            }
+            options.DimensionToFilter.AddDimensionColumn("category", "Handmade");
 
             var valueCount = 0;
 
-            await foreach (string value in client.GetValuesOfDimensionWithAnomaliesAsync(DetectionConfigurationId, dimensionName, options))
+            await foreach (string value in client.GetAnomalyDimensionValuesAsync(DetectionConfigurationId, dimensionName, options))
             {
                 Assert.That(value, Is.Not.Null.And.Not.Empty);
 
@@ -268,9 +350,9 @@ namespace Azure.AI.MetricsAdvisor.Tests
         [RecordedTest]
         [TestCase(true)]
         [TestCase(false)]
-        public async Task GetMetricEnrichedSeriesData(bool populateOptionalMembers)
+        public async Task GetMetricEnrichedSeriesData(bool useTokenCredential)
         {
-            MetricsAdvisorClient client = GetMetricsAdvisorClient();
+            MetricsAdvisorClient client = GetMetricsAdvisorClient(useTokenCredential);
 
             var seriesKey1 = new DimensionKey();
             seriesKey1.AddDimensionColumn("city", "Delhi");
@@ -288,21 +370,21 @@ namespace Azure.AI.MetricsAdvisor.Tests
                 Assert.That(seriesData, Is.Not.Null);
                 Assert.That(seriesData.SeriesKey, Is.Not.Null);
                 Assert.That(seriesData.Timestamps, Is.Not.Null);
-                Assert.That(seriesData.Values, Is.Not.Null);
-                Assert.That(seriesData.ExpectedValues, Is.Not.Null);
+                Assert.That(seriesData.MetricValues, Is.Not.Null);
+                Assert.That(seriesData.ExpectedMetricValues, Is.Not.Null);
                 Assert.That(seriesData.IsAnomaly, Is.Not.Null);
                 Assert.That(seriesData.Periods, Is.Not.Null);
-                Assert.That(seriesData.LowerBoundaries, Is.Not.Null);
-                Assert.That(seriesData.UpperBoundaries, Is.Not.Null);
+                Assert.That(seriesData.LowerBoundaryValues, Is.Not.Null);
+                Assert.That(seriesData.UpperBoundaryValues, Is.Not.Null);
 
                 int pointsCount = seriesData.Timestamps.Count;
 
-                Assert.That(seriesData.Values.Count, Is.EqualTo(pointsCount));
-                Assert.That(seriesData.ExpectedValues.Count, Is.EqualTo(pointsCount));
+                Assert.That(seriesData.MetricValues.Count, Is.EqualTo(pointsCount));
+                Assert.That(seriesData.ExpectedMetricValues.Count, Is.EqualTo(pointsCount));
                 Assert.That(seriesData.IsAnomaly.Count, Is.EqualTo(pointsCount));
                 Assert.That(seriesData.Periods.Count, Is.EqualTo(pointsCount));
-                Assert.That(seriesData.LowerBoundaries.Count, Is.EqualTo(pointsCount));
-                Assert.That(seriesData.UpperBoundaries.Count, Is.EqualTo(pointsCount));
+                Assert.That(seriesData.LowerBoundaryValues.Count, Is.EqualTo(pointsCount));
+                Assert.That(seriesData.UpperBoundaryValues.Count, Is.EqualTo(pointsCount));
 
                 foreach (DateTimeOffset timestamp in seriesData.Timestamps)
                 {
@@ -322,14 +404,14 @@ namespace Azure.AI.MetricsAdvisor.Tests
         {
             Assert.That(rootCause, Is.Not.Null);
             Assert.That(rootCause.Description, Is.Not.Null.And.Not.Empty);
-            Assert.That(rootCause.Score, Is.GreaterThan(0.0).And.LessThanOrEqualTo(1.0));
+            Assert.That(rootCause.ContributionScore, Is.GreaterThan(0.0).And.LessThanOrEqualTo(1.0));
 
             foreach (string path in rootCause.Paths)
             {
                 Assert.That(path, Is.Not.Null.And.Not.Empty);
             }
 
-            ValidateDimensionKey(rootCause.DimensionKey);
+            ValidateSeriesKey(rootCause.SeriesKey);
         }
     }
 }
